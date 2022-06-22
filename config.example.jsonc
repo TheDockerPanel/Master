@@ -1,0 +1,7 @@
+{
+    "frontPort": 443, // Optional if you don't want the frontend
+    "backPort": 9032, // Optional if you don't want the backend
+    "jwt_secret": "$2b$10$1rlMpJ6lM5hXv/gqi0yCTu", // Generate using bcrypt.genSalt()
+    "mongo_uri": "mongo://user:password@mongo.example.com:27017/",
+    "default_allowed_containers": 1 // The amount of containers the default user is allowed to create.
+}

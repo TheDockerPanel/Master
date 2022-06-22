@@ -59,6 +59,18 @@ app.post("/auth/login", async (req, res) => {
     return res.status(200).send({token: token})
 })
 
+app.post("/auth/signup", async (req, res) => {
+    const { username, password, email } = req.body
+    const allowedContainers = req.body.allowedContainers || app.config.default_allowed_containers
+    if (!username || !password || !email) return res.status(400).send("Missing fields")
+    for(field of ["username", "email"]) {
+        const result = await app.db.users.findOne({[field]: req.body[field]})
+        if(result) return res.status(400).send(`${field} already in use.`)
+    }
+    const payload = {username: username, password: bcrypt.hash(password, 10), email: email, allowedContainers: allowedContainers}
+    await app.db.users.insertOne(payload)
+    return res.redirect(201, "/auth/login")
+})
 
 app.listen(config.backPort, () => {
     console.log(`Backend server is running on port ${config.backPort}`);
