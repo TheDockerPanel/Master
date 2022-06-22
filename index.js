@@ -1,5 +1,4 @@
 const config = require('../config.json');
-const { exec } = require('child_process');
 const jwt = require("jsonwebtoken")
 const bcrypt = require('bcrypt');
 const { MongoClient } = require('mongodb')
@@ -36,14 +35,14 @@ app.post("/admin/create", isAdmin, async (req, res) => {
     const { username, password, admin, email} = req.body
     const allowedContainers = req.body.allowedContainers || app.config.default_allowed_containers
     if (!username || !password || !email || !admin ) return res.status(400).send("Missing fields")
+    
+    const existingResults = await app.db.users.findOne({username: username})    
+    existingResults = await app.db.users.findOne({email: email})
+    if (existingResults) return res.status(400).send("Email already in use.")
 
     const payload = {username: username, password: bcrypt.hash(password, 10), admin: admin, email: email, allowedContainers: allowedContainers}
-    
-    let result = await app.db.users.findOne({username: username})    
-    result = await app.db.users.findOne({email: email})
-    if (result) return res.status(400).send("Email already in use.")
 
-    result = await app.db.users.insertOne(payload)
+    await app.db.users.insertOne(payload)
     return res.status(201).send()  
 })
 
@@ -60,8 +59,7 @@ app.post("/auth/login", async (req, res) => {
     return res.status(200).send({token: token})
 })
 
+
 app.listen(config.backPort, () => {
     console.log(`Backend server is running on port ${config.backPort}`);
 })
-
-app.
