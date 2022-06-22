@@ -12,6 +12,43 @@ app.db = MongoClient(config.mongoUrl, { useNewUrlParser: true })
 
 app.db.epikpanel = app.db.db('epikpanel')
 app.db.users = app.db.epikpanel.collection('users')
+app.db.containers = app.db.epikpanel.collection("containers")
+
+const generateId = length => {
+    let n = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+    let password = "";
+    
+    while (password.length < length) {
+        password += n[Math.floor(Math.random() * n.length)];
+    }
+
+    return password; // Thanks Rin.
+}
+
+const getUser = async (req, res) => {
+    jwt.verify(req.headers.authorization.split(" ")[1], app.config.jwt_secret, (error, user) => {
+        if(error) {
+            return res.status(401).send({ error: "Unauthorized" })
+        } else if(!await app.db.users.findOne({ email: user.email })) {
+            return res.status(403).send({ error: "Unauthorized" })
+        }
+        return user
+    })
+
+}
+
+const isLoggedIn = async (req, res, next) => {
+
+    const token = req.headers.authorization && req.headers.authorization.split(" ")[1]
+
+    if(!token) {
+        return res.redirect(401, "/auth/login")
+    }
+
+    await getUser(req, res)
+
+    next()
+}
 
 const isAdmin = async (req, res, next) => {
     const token = req.headers.authorization && req.headers.authorization.split(" ")[1]
@@ -19,14 +56,11 @@ const isAdmin = async (req, res, next) => {
         return res.status(401).send({ error: "Unauthorized" })
     }
 
-    jwt.verify(token, app.config.jwt_secret, (error, user) => {
-        if(error) {
-            return res.status(401).send({ error: "Unauthorized" })
-        }
-        if(!user.admin) {
-            return res.status(403).send({ error: "Unauthorized" })
-        }
-    })
+    const user = await getUser(req, res)
+
+    if(!user.admin) {
+        return res.status(403).send({ error: "Unauthorized" })
+    }
 
     next()
 }
@@ -70,6 +104,46 @@ app.post("/auth/signup", async (req, res) => {
     const payload = {username: username, password: bcrypt.hash(password, 10), email: email, allowedContainers: allowedContainers}
     await app.db.users.insertOne(payload)
     return res.redirect(201, "/auth/login")
+})
+
+app.get("/containers", isLoggedIn, async (req, res) => {
+    const user = await getToken(req, res)
+    const containers = await app.db.containers.find(container => container.ownerEmail == user.email)
+    return res.status(200).send(containers)
+})
+
+app.post("/containers/", isLoggedIn, async (req, res) => {
+
+    const user = await getToken(req, res)
+    const { name, image, owner } = req.body
+
+    if (!name || !image || !owner) return res.status(400).send("Missing fields")
+
+
+    const payload = {name: name, image: image, owner: owner, id: generateId(30)}
+    const containers = await app.db.containers.find(container => container.ownerEmail == user.email)
+
+    if(containers.length == user.allowedContainers) return res.status(400).send("You have reached the maximum number of containers.") // If the user has reached the maximum number of containers
+
+    await app.db.containers.insertOne(payload)
+    res.status(201).send()    
+})
+
+app.get("/containers/:id", isLoggedIn, async (req, res) => {
+    const containerId = req.params.id
+    const user = await getToken(req, res)
+    const container = await app.db.containers.findOne({id: containerId, ownerEmail: user.email})
+    if(!container) return res.status(404).send("Container not found.")
+    return res.status(200).send(container)
+})
+
+app.delete("/containers/:id", isLoggedIn, async (req, res) => {
+    const containerId = req.params.id
+    const user = await getToken(req, res)
+    const container = await app.db.containers.findOne({id: containerId, ownerEmail: user.email})
+    if(!container) return res.status(404).send("Container not found.")
+    await app.db.containers.deleteOne({id: containerId, ownerEmail: user.email})
+    return res.status(204).send()
 })
 
 app.listen(config.backPort, () => {
